@@ -1,0 +1,18 @@
+replicaCount: 1
+
+image:
+  repository: traefik
+  tag: "v2.11.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP   # Traefik поднимается с hostPort, Service нужен только для ClusterIP
+  ports:
+    web: 80
+    websecure: 443
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -7,13 +7,12 @@ prometheus:
   scrapeInterval: 15s
   evaluationInterval: 15s
 
-# kubeStateMetrics:
-#   image: quay.io/coreos/kube-state-metrics:v2.7.0
-#   service:
-#     type: ClusterIP
-#     port: 8080
-
-# nodeExporter:
-#   image: quay.io/prometheus/node-exporter:v1.6.0
-#   hostPort: 9100
-#   resources: {}
+ingress:
+  enabled: true
+  className: "traefik"
+  hosts:
+    - host: prom.devops-tools-dev.speechpro.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []

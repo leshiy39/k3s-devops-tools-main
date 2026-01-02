@@ -12,9 +12,9 @@ service:
 
 ingress:
   enabled: true
-  className: ""
+  className: "traefik"
   hosts:
-    - host: grafana.local
+    - host: grafana.devops-tools-dev.speechpro.com
       paths:
         - path: /
           pathType: Prefix
@@ -28,3 +28,6 @@ persistence:
   size: 5Gi
 
 resources: {}
+
+prometheus:
+  url: http://prometheus.prometheus.svc.cluster.local

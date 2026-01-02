@@ -17,6 +17,6 @@ spec:
           image: kubesphere/kube-state-metrics:v2.15.0
           args:
             - --port=8780
-            - --telemetry-port=8780
+            - --telemetry-port=8781
           ports:
             - containerPort: 8780

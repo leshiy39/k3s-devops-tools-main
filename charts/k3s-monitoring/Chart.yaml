@@ -1,6 +1,0 @@
-apiVersion: v2
-name: k3s-monitoring
-description: Prometheus stack for k3s monitoring with node-exporter and kube-state-metrics
-type: application
-version: 0.1.0
-appVersion: "2.46.0"

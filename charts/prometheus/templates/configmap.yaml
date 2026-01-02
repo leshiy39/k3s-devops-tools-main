@@ -13,7 +13,7 @@ data:
           - targets: ['localhost:9090']
       - job_name: 'kube-state-metrics'
         static_configs:
-          - targets: ['kube-state-metrics:8080']
+          - targets: ['kube-state-metrics:8780']
       - job_name: 'node-exporter'
         static_configs:
           - targets: ['node-exporter:9100']
