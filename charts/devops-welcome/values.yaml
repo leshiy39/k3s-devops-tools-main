@@ -1,0 +1,15 @@
+replicaCount: 1
+
+image:
+  repository: ptdockreg.ad.speechpro.com:5000/stc/infra/nginx
+  tag: 1.23.3
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+traefik:
+  enabled: true
+  host: devops-tools-dev.speechpro.com
+  path: /

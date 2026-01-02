@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: hashicorp/vault
+  tag: "1.14.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 8200
+  nodePort: 30820
+
+ingress:
+  enabled: true
+  className: ""
+  hosts:
+    - host: vault.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+
+persistence:
+  enabled: false
+  size: 1Gi
+  storageClass: ""

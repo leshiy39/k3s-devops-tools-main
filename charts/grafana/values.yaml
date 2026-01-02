@@ -1,0 +1,30 @@
+replicaCount: 1
+
+image:
+  repository: grafana/grafana
+  tag: 10.0.0
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 30300
+
+ingress:
+  enabled: true
+  className: ""
+  hosts:
+    - host: grafana.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+persistence:
+  enabled: true
+  storageClass: ""   # оставьте пустым для использования default StorageClass
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+
+resources: {}

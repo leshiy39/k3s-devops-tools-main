@@ -1,0 +1,8 @@
+image:
+  repository: kubesphere/kube-state-metrics
+  tag: v2.15.0 
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8780

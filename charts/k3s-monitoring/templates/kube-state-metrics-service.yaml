@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-state-metrics
+spec:
+  type: {{ .Values.kubeStateMetrics.service.type }}
+  selector:
+    app: kube-state-metrics
+  ports:
+    - port: {{ .Values.kubeStateMetrics.service.port }}
+      targetPort: 8080

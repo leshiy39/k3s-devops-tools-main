@@ -1,0 +1,19 @@
+prometheus:
+  image: prom/prometheus:v2.46.0
+  service:
+    type: NodePort
+    port: 9090
+    nodePort: 30900
+  scrapeInterval: 15s
+  evaluationInterval: 15s
+
+# kubeStateMetrics:
+#   image: quay.io/coreos/kube-state-metrics:v2.7.0
+#   service:
+#     type: ClusterIP
+#     port: 8080
+
+# nodeExporter:
+#   image: quay.io/prometheus/node-exporter:v1.6.0
+#   hostPort: 9100
+#   resources: {}

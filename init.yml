@@ -1,0 +1,145 @@
+---
+- name: Install k3s and configure HTTP registry
+  hosts: all
+  gather_facts: true
+
+  vars_prompt:
+    - name: ansible_become_pass
+      prompt: "Введите пароль sudo для установки k3s"
+      private: true
+
+  connection: "{{ 'local' if inventory_hostname in ['127.0.0.1', 'localhost'] else 'ssh' }}"
+  become: true
+
+
+  vars:
+    ansible_ssh_user: root
+    k3s_online_script: "{{ playbook_dir }}/scripts/install_k3s.sh"
+    k3s_offline_script: "{{ playbook_dir }}/scripts/install_k3s.sh"
+    k3s_script_path: ""
+
+
+    # ---- registry ----
+    registry_host: "ptdockreg.ad.speechpro.com:5000"
+    registry_endpoint: "http://ptdockreg.ad.speechpro.com:5000"
+
+    # ---- kubeconfig ----
+    local_kube_dir: "{{ lookup('env','HOME') }}/.kube"
+    local_kubeconfig: "{{ local_kube_dir }}/{{ inventory_hostname }}_kubeconfig"
+    remote_kubeconfig: /etc/rancher/k3s/k3s.yaml
+    node_ip: "{{ inventory_hostname }}"
+
+  tasks:
+    # -------- K3S INSTALL --------
+    - name: Download k3s install script (online)
+      block:
+        - name: Try to download k3s install script
+          get_url:
+            url: https://get.k3s.io
+            dest: "{{ k3s_online_script }}"
+            mode: "0755"
+
+        - name: Use online k3s script
+          set_fact:
+            k3s_script_path: "{{ k3s_online_script }}"
+
+      rescue:
+        - name: Notify that online download failed
+          debug:
+            msg:
+              - "⚠️ Не удалось загрузить install скрипт k3s"
+              - "📦 Используется локальная офлайн-версия"
+              - "📄 {{ k3s_offline_script }}"
+
+        - name: Check offline k3s script exists
+          stat:
+            path: "{{ k3s_offline_script }}"
+          register: offline_script
+
+        - name: Fail if offline script is missing
+          fail:
+            msg: "❌ Офлайн-скрипт {{ k3s_offline_script }} не найден"
+          when: not offline_script.stat.exists
+
+        - name: Use offline k3s script
+          set_fact:
+            k3s_script_path: "{{ k3s_offline_script }}"
+    
+    - name: Install kubernetes deps
+      block:
+        - name: Try to install via package
+          ansible.builtin.package:
+            name:
+              - helm
+            state: latest
+      rescue:
+        - name: Install helm (safe for broken python env)
+          shell: |
+            if ! command -v helm >/dev/null 2>&1; then
+              curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+            fi
+          args:
+            creates: /usr/local/bin/helm
+            
+    - name: Install k3s
+      command: "{{ k3s_script_path }}"
+      args:
+        creates: /usr/local/bin/k3s
+
+    # -------- HTTP REGISTRY CONFIG --------
+    - name: Ensure containerd certs.d directory exists
+      file:
+        path: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ registry_host }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create hosts.toml for HTTP registry
+      copy:
+        dest: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ registry_host }}/hosts.toml"
+        mode: "0644"
+        content: |
+          server = "{{ registry_endpoint }}"
+
+    - name: Restart k3s to apply registry config
+      service:
+        name: k3s
+        state: restarted
+
+    # -------- LOCAL KUBECONFIG --------
+    - name: Ensure local .kube directory exists
+      delegate_to: localhost
+      become: false
+      file:
+        path: "{{ local_kube_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Fetch kubeconfig from remote host
+      fetch:
+        src: "{{ remote_kubeconfig }}"
+        dest: "{{ local_kubeconfig }}"
+        flat: true
+
+    - name: Replace server address in kubeconfig
+      delegate_to: localhost
+      become: false
+      replace:
+        path: "{{ local_kubeconfig }}"
+        regexp: 'server:\s*https://.*:6443'
+        replace: "server: https://{{ node_ip }}:6443"
+
+    - name: Install traefik cdr
+      command: kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
+
+    - name: Print completion info
+      delegate_to: localhost
+      debug:
+        msg:
+          - "✅ K3s установлен и registry настроен на {{ inventory_hostname }}"
+          - "📦 Registry: {{ registry_host }}"
+          - "📄 kubeconfig:"
+          - "   {{ local_kubeconfig }}"
+          - "🚀 Установка чарта:"
+          - "   KUBECONFIG={{ local_kubeconfig }} helm install devops-welcome ./charts/devops-welcome"
+          - "🔍 Проверка:"
+          - "   KUBECONFIG={{ local_kubeconfig }} kubectl get pods"
