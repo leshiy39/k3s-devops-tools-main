@@ -23,3 +23,10 @@ do
   kubectl delete ns $each
 done
 ```
+
+update grafana with only values changed
+```
+helm upgrade --install grafana charts/grafana/ -f charts/grafana/values.yaml
+kubectl rollout restart deployment grafana
+```
+

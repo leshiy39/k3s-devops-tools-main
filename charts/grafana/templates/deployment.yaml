@@ -27,24 +27,23 @@ spec:
               value: "admin"
 
           volumeMounts:
-            # Данные Grafana
+            # Grafana data
             - name: grafana-data
               mountPath: /var/lib/grafana
 
-            # Dashboards (json)
+            # Dashboards (JSON + gnet provisioning)
             - name: grafana-dashboard
               mountPath: /var/lib/grafana/dashboards
 
-            # Provisioning dashboards
+            # Dashboard providers
             - name: grafana-dashboards-config
               mountPath: /etc/grafana/provisioning/dashboards
 
-            # Provisioning datasources
+            # Datasources
             - name: grafana-datasource
               mountPath: /etc/grafana/provisioning/datasources
 
       volumes:
-        # PVC / emptyDir
         - name: grafana-data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
@@ -53,17 +52,14 @@ spec:
           emptyDir: {}
           {{- end }}
 
-        # Dashboards json
         - name: grafana-dashboard
           configMap:
             name: {{ .Release.Name }}-dashboard
 
-        # dashboards provisioning config
         - name: grafana-dashboards-config
           configMap:
             name: {{ .Release.Name }}-dashboards-config
 
-        # datasources provisioning
         - name: grafana-datasource
           configMap:
             name: {{ .Release.Name }}-datasource

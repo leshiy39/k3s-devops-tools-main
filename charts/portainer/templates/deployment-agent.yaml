@@ -20,8 +20,10 @@ spec:
         - name: portainer-agent
           image: "{{ .Values.image.agent.repository }}:{{ .Values.image.agent.tag }}"
           imagePullPolicy: {{ .Values.image.agent.pullPolicy }}
-          args:
-            - -H
-            - "tcp://:9001"
+          env:
+            - name: KUBERNETES_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           ports:
             - containerPort: 9001

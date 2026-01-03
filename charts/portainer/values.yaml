@@ -26,4 +26,4 @@ ingress:
   path: /
   pathType: Prefix
 
-nameSpace: portainer
+nameSpace: kube-system
