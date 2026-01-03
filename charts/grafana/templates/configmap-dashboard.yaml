@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboards
+  name: {{ .Release.Name }}-dashboard   # <- должно совпадать с Deployment
   labels:
     grafana_dashboard: "1"
 data:

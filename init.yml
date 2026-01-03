@@ -19,6 +19,9 @@
     k3s_offline_script_local: "{{ playbook_dir }}/scripts/install_k3s.sh"
     k3s_script_remote: /usr/local/bin/install_k3s.sh
 
+    k3s_write_kubeconfig_mode: "0640"
+    k3s_write_kubeconfig_group: "k3s"
+
     k3s_script_path: ""
 
     # ------------------------------------------------------------------
@@ -39,6 +42,13 @@
   # TASKS
   # ====================================================================
   tasks:
+
+    # --------------------------------------------------------------------
+  # SAVE TARGET HOST (CRITICAL)
+  # --------------------------------------------------------------------
+  - name: Save target host for delegated tasks
+    ansible.builtin.set_fact:
+      target_host: "{{ inventory_hostname }}"
 
   # --------------------------------------------------------------------
   # UNINSTALL
@@ -144,6 +154,20 @@
     when: "'uninstall' not in ansible_run_tags"
     tags: install
 
+  - name: Install Helm
+    block:
+      - package:
+          name: helm
+          state: present
+    rescue:
+      - shell: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        args:
+          creates: /usr/local/bin/helm
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
+    delegate_to: localhost
+
   # --------------------------------------------------------------------
   # INSTALL K3S
   # --------------------------------------------------------------------
@@ -151,8 +175,22 @@
     command: "{{ k3s_script_path }}"
     args:
       creates: /usr/local/bin/k3s
+    environment:
+      INSTALL_K3S_EXEC: >
+        server
+        --write-kubeconfig-mode {{ k3s_write_kubeconfig_mode }}
+        --write-kubeconfig-group {{ k3s_write_kubeconfig_group }}
     when: "'uninstall' not in ansible_run_tags"
     tags: install
+
+
+  - name: Install k3s (localhost)
+    command: "{{ k3s_offline_script_local }}"
+    args:
+      creates: /usr/local/bin/k3s
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
+    delegate_to: localhost
 
   # --------------------------------------------------------------------
   # REGISTRY CONFIG
@@ -229,6 +267,19 @@
     when: "'uninstall' not in ansible_run_tags"
     tags: charts
     delegate_to: localhost
+  - name: Install Portainer
+    shell: |
+     
+      helm upgrade --install {{ item }} ./{{ item }} --namespace portainer --create-namespace
+    args:
+      chdir: "{{ playbook_dir }}/charts"
+    environment:
+      KUBECONFIG: "{{ local_kubeconfig }}"
+    loop:
+      - portainer
+    when: "'uninstall' not in ansible_run_tags"
+    tags: charts
+    delegate_to: localhost
 
   - name: Install common charts
     shell: |
@@ -243,11 +294,110 @@
       - prometheus
       - kube-state-metrics
       - vault
-      - portainer
       - node-exporter
     when: "'uninstall' not in ansible_run_tags"
     tags: charts
     delegate_to: localhost
+
+  - name: Find all values.yaml in charts
+    ansible.builtin.find:
+      paths: charts
+      patterns: values.yaml
+      recurse: true
+    register: values_files
+    delegate_to: localhost
+    run_once: true
+
+  - name: Parse ingress hosts from values.yaml
+    ansible.builtin.set_fact:
+      parsed_hosts: >-
+        {{
+          parsed_hosts | default([]) +
+          (
+            (
+              lookup('file', item.path)
+              | from_yaml
+              | json_query('ingress.hosts[].host')
+            ) | default([])
+          )
+        }}
+    loop: "{{ values_files.files }}"
+    delegate_to: localhost
+    run_once: true
+    when:
+      - lookup('file', item.path) | from_yaml | json_query('ingress.hosts') is not none
+
+  # --------------------------------------------------------------------
+  # ENABLE KUBECTL WITHOUT SUDO
+  # --------------------------------------------------------------------
+  - name: Enable kubectl access without sudo
+    block:
+
+      - name: Ensure k3s group exists
+        ansible.builtin.group:
+          name: k3s
+          state: present
+
+      - name: Add user to k3s group
+        ansible.builtin.user:
+          name: "{{ ansible_user_id }}"
+          groups: k3s
+          append: true
+
+      - name: Create .kube directory for user
+        ansible.builtin.file:
+          path: "/home/{{ ansible_user_id }}/.kube"
+          state: directory
+          owner: "{{ ansible_user_id }}"
+          group: "{{ ansible_user_id }}"
+          mode: "0755"
+
+      - name: Copy kubeconfig to user home
+        ansible.builtin.copy:
+          src: /etc/rancher/k3s/k3s.yaml
+          dest: "/home/{{ ansible_user_id }}/.kube/config"
+          remote_src: true
+          owner: "{{ ansible_user_id }}"
+          group: "{{ ansible_user_id }}"
+          mode: "0644"
+
+      - name: Replace server address in kubeconfig
+        ansible.builtin.replace:
+          path: "/home/{{ ansible_user_id }}/.kube/config"
+          regexp: 'server: https://.*:6443'
+          replace: "server: https://{{ node_ip }}:6443"
+
+      - name: Export KUBECONFIG in bashrc
+        ansible.builtin.lineinfile:
+          path: "/home/{{ ansible_user_id }}/.bashrc"
+          line: 'export KUBECONFIG=$HOME/.kube/config'
+          create: true
+
+    when: "'uninstall' not in ansible_run_tags"
+    tags:
+      - install
+      - kubeconfig
+
+
+
+  # --------------------------------------------------------------------
+  # BUILD HOSTS ENTRIES (FIXED)
+  # --------------------------------------------------------------------
+  - name: Build hosts entries
+    ansible.builtin.set_fact:
+      hosts_entries: >-
+        {{
+          parsed_hosts
+          | unique
+          | map('regex_replace', '^',
+              hostvars[target_host].ansible_host
+              | default(target_host)
+              ~ ' ')
+          | list
+        }}
+    delegate_to: localhost
+    run_once: true
+
 
   # --------------------------------------------------------------------
   # FINAL INFO
@@ -258,3 +408,8 @@
         - "📦 Registry: {{ registry_host }}"
         - "📄 KUBECONFIG={{ local_kubeconfig }}"
     when: "'uninstall' not in ansible_run_tags"
+
+  - name: Show parsed hosts
+    ansible.builtin.debug:
+      msg: "{{ hosts_entries }}"
+    run_once: true
