@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -16,15 +18,33 @@ spec:
         - name: {{ .Release.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+
           ports:
             - containerPort: 3000
+
           env:
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: "admin"
+
           volumeMounts:
+            # Данные Grafana
             - name: grafana-data
               mountPath: /var/lib/grafana
+
+            # Dashboards (json)
+            - name: grafana-dashboards
+              mountPath: /var/lib/grafana/dashboards
+
+            # Provisioning dashboards
+            - name: grafana-dashboards-config
+              mountPath: /etc/grafana/provisioning/dashboards
+
+            # Provisioning datasources
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+
       volumes:
+        # PVC / emptyDir
         - name: grafana-data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:
@@ -32,3 +52,18 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+
+        # Dashboards json
+        - name: grafana-dashboards
+          configMap:
+            name: {{ .Release.Name }}-dashboard
+
+        # dashboards provisioning config
+        - name: grafana-dashboards-config
+          configMap:
+            name: {{ .Release.Name }}-dashboards-config
+
+        # datasources provisioning
+        - name: grafana-datasources
+          configMap:
+            name: {{ .Release.Name }}-datasources

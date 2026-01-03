@@ -1,0 +1,29 @@
+replicaCountPortainer: 1
+replicaCountAgent: 1
+
+image:
+  portainer:
+    repository: portainer/portainer-ce
+    tag: "2.19.0"
+    pullPolicy: IfNotPresent
+  agent:
+    repository: portainer/agent
+    tag: "2.19.0"
+    pullPolicy: IfNotPresent
+
+service:
+  portainer:
+    type: ClusterIP
+    port: 9000
+  agent:
+    type: ClusterIP
+    port: 9001
+
+ingress:
+  enabled: true
+  className: traefik
+  host: portainer.devops-tools-dev.speechpro.com
+  path: /
+  pathType: Prefix
+
+nameSpace: portainer

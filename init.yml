@@ -1,264 +1,260 @@
 ---
-- name: Install or uninstall K3s and configure HTTP registry
+- name: K3s lifecycle management (install / uninstall / charts)
   hosts: all
   gather_facts: true
+  become: true
 
   vars_prompt:
     - name: ansible_become_pass
-      prompt: "Enter sudo password for K3s operations"
+      prompt: "Enter sudo password"
       private: true
 
-  connection: "{{ 'local' if inventory_hostname in ['127.0.0.1', 'localhost'] else 'ssh' }}"
-  become: true
+  connection: "{{ 'local' if inventory_hostname in ['localhost','127.0.0.1'] else 'ssh' }}"
 
   vars:
-    ansible_ssh_user: root
-    k3s_online_script: "{{ playbook_dir }}/scripts/install_k3s.sh"
-    k3s_offline_script: "{{ playbook_dir }}/scripts/install_k3s.sh"
+    # ------------------------------------------------------------------
+    # K3S SCRIPT PATHS
+    # ------------------------------------------------------------------
+    k3s_online_script_local: "{{ playbook_dir }}/scripts/k3s_online.sh"
+    k3s_offline_script_local: "{{ playbook_dir }}/scripts/install_k3s.sh"
+    k3s_script_remote: /usr/local/bin/install_k3s.sh
+
     k3s_script_path: ""
 
-    # ---- registry ----
+    # ------------------------------------------------------------------
+    # REGISTRY
+    # ------------------------------------------------------------------
     registry_host: "ptdockreg.ad.speechpro.com:5000"
     registry_endpoint: "http://ptdockreg.ad.speechpro.com:5000"
 
-    # ---- kubeconfig ----
+    # ------------------------------------------------------------------
+    # KUBECONFIG
+    # ------------------------------------------------------------------
     local_kube_dir: "{{ lookup('env','HOME') }}/.kube"
-    local_kubeconfig: "{{ local_kube_dir }}/{{ inventory_hostname }}_kubeconfig"
+    local_kubeconfig: "{{ local_kube_dir }}/{{ inventory_hostname }}.yaml"
     remote_kubeconfig: /etc/rancher/k3s/k3s.yaml
     node_ip: "{{ inventory_hostname }}"
 
+  # ====================================================================
+  # TASKS
+  # ====================================================================
   tasks:
 
-    # -------- UNINSTALL K3S --------
-    - name: Uninstall K3s
-      block:
-        - name: Stop K3s service
-          ansible.builtin.service:
-            name: k3s
-            state: stopped
-          ignore_errors: true
-          when: "'uninstall' in ansible_run_tags"
+  # --------------------------------------------------------------------
+  # UNINSTALL
+  # --------------------------------------------------------------------
+  - name: Uninstall K3s
+    block:
+      - name: Stop k3s
+        service:
+          name: k3s
+          state: stopped
+        ignore_errors: true
 
-        - name: Run K3s uninstall script
-          ansible.builtin.command:
-            cmd: /usr/local/bin/k3s-uninstall.sh
-          ignore_errors: true
-          when: "'uninstall' in ansible_run_tags"
+      - name: Run uninstall script
+        command: /usr/local/bin/k3s-uninstall.sh
+        ignore_errors: true
 
-        - name: Remove leftover directories
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: absent
-          loop:
-            - /etc/rancher/k3s
-            - /var/lib/rancher/k3s
-            - /var/lib/kubelet
-            - /var/lib/cni
-            - /var/lib/kube-proxy
-            - /var/log/k3s.log
-          ignore_errors: true
-          when: "'uninstall' in ansible_run_tags"
+      - name: Remove k3s directories
+        file:
+          path: "{{ item }}"
+          state: absent
+        loop:
+          - /etc/rancher
+          - /var/lib/rancher
+          - /var/lib/kubelet
+          - /var/lib/cni
+          - /var/log/k3s.log
+        ignore_errors: true
 
-        - name: Remove local kubeconfig
-          delegate_to: localhost
-          become: false
-          ansible.builtin.file:
-            path: "{{ local_kubeconfig }}"
-            state: absent
-          ignore_errors: true
-          when: "'uninstall' in ansible_run_tags"
+      - name: Remove local kubeconfig
+        delegate_to: localhost
+        become: false
+        file:
+          path: "{{ local_kubeconfig }}"
+          state: absent
 
-        - name: Print completion message for uninstall
-          delegate_to: localhost
-          ansible.builtin.debug:
-            msg: "✅ K3s and related configs removed from {{ inventory_hostname }}"
-          when: "'uninstall' in ansible_run_tags"
-      tags:
-        - uninstall
+      - debug:
+          msg: "✅ K3s uninstalled on {{ inventory_hostname }}"
 
-    # -------- K3S INSTALL --------
-    - name: Download k3s install script (online)
-      block:
-        - name: Try to download k3s install script
-          ansible.builtin.get_url:
-            url: https://get.k3s.io
-            dest: "{{ k3s_online_script }}"
-            mode: "0755"
+    tags: uninstall
+    when: "'uninstall' in ansible_run_tags"
 
-        - name: Use online k3s script
-          ansible.builtin.set_fact:
-            k3s_script_path: "{{ k3s_online_script }}"
-      rescue:
-        - name: Notify that online download failed
-          ansible.builtin.debug:
-            msg:
-              - "⚠️ Failed to download k3s install script"
-              - "📦 Using local offline version"
-              - "📄 {{ k3s_offline_script }}"
+  # --------------------------------------------------------------------
+  # STAGE K3S INSTALL SCRIPT
+  # --------------------------------------------------------------------
+  - name: Stage k3s install script (online → offline fallback)
+    block:
 
-        - name: Check offline k3s script exists
-          ansible.builtin.stat:
-            path: "{{ k3s_offline_script }}"
-          register: offline_script
+      - name: Download k3s script (online)
+        delegate_to: localhost
+        become: false
+        get_url:
+          url: https://get.k3s.io
+          dest: "{{ k3s_online_script_local }}"
+          mode: "0755"
 
-        - name: Fail if offline script is missing
-          ansible.builtin.fail:
-            msg: "❌ Offline k3s script {{ k3s_offline_script }} not found"
-          when: not offline_script.stat.exists
+      - name: Copy online script to remote
+        copy:
+          src: "{{ k3s_online_script_local }}"
+          dest: "{{ k3s_script_remote }}"
+          mode: "0755"
 
-        - name: Use offline k3s script
-          ansible.builtin.set_fact:
-            k3s_script_path: "{{ k3s_offline_script }}"
+      - set_fact:
+          k3s_script_path: "{{ k3s_script_remote }}"
 
-      when: "'uninstall' not in ansible_run_tags"
+    rescue:
 
-    - name: Install Kubernetes dependencies
-      block:
-        - name: Try to install via package
-          ansible.builtin.package:
-            name:
-              - helm
-            state: latest
-      rescue:
-        - name: Install helm (fallback for broken Python env)
-          ansible.builtin.shell: |
-            if ! command -v helm >/dev/null 2>&1; then
-              curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-            fi
-          args:
-            creates: /usr/local/bin/helm
-      when: "'uninstall' not in ansible_run_tags"
+      - name: Check offline script exists
+        delegate_to: localhost
+        become: false
+        stat:
+          path: "{{ k3s_offline_script_local }}"
+        register: offline_script
 
-    - name: Install k3s
-      ansible.builtin.command:
-        cmd: "{{ k3s_script_path }}"
-      args:
-        creates: /usr/local/bin/k3s
-      when: "'uninstall' not in ansible_run_tags"
+      - fail:
+          msg: "❌ Offline k3s script not found"
+        when: not offline_script.stat.exists
 
-    # -------- HTTP REGISTRY CONFIG --------
-    - name: Ensure containerd certs.d directory exists
-      ansible.builtin.file:
-        path: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ registry_host }}"
-        state: directory
-        mode: "0755"
-      when: "'uninstall' not in ansible_run_tags"
+      - name: Copy offline script to remote
+        copy:
+          src: "{{ k3s_offline_script_local }}"
+          dest: "{{ k3s_script_remote }}"
+          mode: "0755"
 
-    - name: Create hosts.toml for HTTP registry
-      ansible.builtin.copy:
-        dest: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ registry_host }}/hosts.toml"
-        mode: "0644"
-        content: |
-          server = "{{ registry_endpoint }}"
-      when: "'uninstall' not in ansible_run_tags"
+      - set_fact:
+          k3s_script_path: "{{ k3s_script_remote }}"
 
-    - name: Restart k3s to apply registry config
-      ansible.builtin.service:
-        name: k3s
-        state: restarted
-      when: "'uninstall' not in ansible_run_tags"
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
 
-    # -------- LOCAL KUBECONFIG --------
-    - name: Ensure local .kube directory exists
-      delegate_to: localhost
-      become: false
-      ansible.builtin.file:
-        path: "{{ local_kube_dir }}"
-        state: directory
-        mode: "0755"
-      when: "'uninstall' not in ansible_run_tags"
+  # --------------------------------------------------------------------
+  # INSTALL HELM
+  # --------------------------------------------------------------------
+  - name: Install Helm
+    block:
+      - package:
+          name: helm
+          state: present
+    rescue:
+      - shell: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        args:
+          creates: /usr/local/bin/helm
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
 
-    - name: Fetch kubeconfig from remote host
-      ansible.builtin.fetch:
-        src: "{{ remote_kubeconfig }}"
-        dest: "{{ local_kubeconfig }}"
-        flat: true
-      when: "'uninstall' not in ansible_run_tags"
+  # --------------------------------------------------------------------
+  # INSTALL K3S
+  # --------------------------------------------------------------------
+  - name: Install k3s
+    command: "{{ k3s_script_path }}"
+    args:
+      creates: /usr/local/bin/k3s
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
 
-    - name: Replace server address in kubeconfig
-      delegate_to: localhost
-      become: false
-      ansible.builtin.replace:
-        path: "{{ local_kubeconfig }}"
-        regexp: 'server:\s*https://.*:6443'
-        replace: "server: https://{{ node_ip }}:6443"
-      when: "'uninstall' not in ansible_run_tags"
+  # --------------------------------------------------------------------
+  # REGISTRY CONFIG
+  # --------------------------------------------------------------------
+  - name: Configure HTTP registry
+    block:
+      - file:
+          path: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ registry_host }}"
+          state: directory
 
-    # -------- INSTALL COMMON CHARTS --------
+      - copy:
+          dest: "/var/lib/rancher/k3s/agent/etc/containerd/certs.d/{{ registry_host }}/hosts.toml"
+          content: |
+            server = "{{ registry_endpoint }}"
 
-    # 1️⃣ Устанавливаем CRD Traefik заранее
-    - name: Install Traefik CRD
-      ansible.builtin.command:
-        cmd: kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
-      environment:
-        KUBECONFIG: "{{ local_kubeconfig }}"
-      register: traefik_crd
-      changed_when: "'created' in traefik_crd.stdout or 'configured' in traefik_crd.stdout"
-      when: "'uninstall' not in ansible_run_tags"
+      - service:
+          name: k3s
+          state: restarted
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
 
-    # # 2️⃣ Устанавливаем Traefik Helm Chart в default
-    # - name: Install Traefik
-    #   ansible.builtin.shell: |
-    #     helm upgrade --install traefik ./traefik \
-    #       --namespace default \
-    #       --create-namespace
-    #   args:
-    #     chdir: "{{ playbook_dir }}/charts"
-    #     executable: /bin/bash
-    #   environment:
-    #     KUBECONFIG: "{{ local_kubeconfig }}"
-    #   register: traefik_install
-    #   until: traefik_install.rc == 0
-    #   retries: 3
-    #   delay: 10
-    #   when: "'uninstall' not in ansible_run_tags"
+  # --------------------------------------------------------------------
+  # KUBECONFIG
+  # --------------------------------------------------------------------
+  - name: Fetch kubeconfig
+    block:
+      - delegate_to: localhost
+        become: false
+        file:
+          path: "{{ local_kube_dir }}"
+          state: directory
 
-    - name: Install common services
-      ansible.builtin.shell: |
-        helm upgrade --install {{ item }} ./{{ item }} --create-namespace
-      args:
-        chdir: "{{ playbook_dir }}/charts"
-        executable: /bin/bash
-      environment:
-        KUBECONFIG: "{{ local_kubeconfig }}"
-      loop:
-        - traefik
-        - grafana
-        - prometheus
-        - kube-state-metrics
-        - vault
-        - portainer-server
-        - node-exporter
-      loop_control:
-        label: "{{ item }}"
-      when: "'uninstall' not in ansible_run_tags"
+      - fetch:
+          src: "{{ remote_kubeconfig }}"
+          dest: "{{ local_kubeconfig }}"
+          flat: true
 
-    - name: Show services in common namespace
-      ansible.builtin.shell: kubectl get svc -n default
-      args:
-        chdir: "{{ playbook_dir }}/charts"
-        executable: /bin/bash
-      environment:
-        KUBECONFIG: "{{ local_kubeconfig }}"
-      register: common_services
-      when: "'uninstall' not in ansible_run_tags"
+      - delegate_to: localhost
+        become: false
+        replace:
+          path: "{{ local_kubeconfig }}"
+          regexp: 'server: https://.*:6443'
+          replace: "server: https://{{ node_ip }}:6443"
 
-    - name: Print services in common namespace
-      delegate_to: localhost
-      ansible.builtin.debug:
-        msg: "{{ common_services.stdout_lines }}"
-      when: "'uninstall' not in ansible_run_tags"
+    when: "'uninstall' not in ansible_run_tags"
+    tags: install
 
-    - name: Print completion info
-      delegate_to: localhost
-      ansible.builtin.debug:
-        msg:
-          - "✅ K3s is installed and registry is configured on {{ inventory_hostname }}"
-          - "📦 Registry: {{ registry_host }}"
-          - "📄 kubeconfig:"
-          - "   {{ local_kubeconfig }}"
-          - "🚀 Install chart:"
-          - "   KUBECONFIG={{ local_kubeconfig }} helm install devops-welcome ./charts/devops-welcome"
-          - "🔍 Verify:"
-          - "   KUBECONFIG={{ local_kubeconfig }} kubectl get pods"
-      when: "'uninstall' not in ansible_run_tags"
+  # --------------------------------------------------------------------
+  # HELM CHARTS
+  # --------------------------------------------------------------------
+  - name: Install k8s-dashboard
+    shell: |
+      # Delete old resources if exist
+      kubectl delete secret kubernetes-dashboard-csrf -n kube-system --ignore-not-found
+      kubectl delete serviceaccount kubernetes-dashboard -n kube-system --ignore-not-found
+      kubectl delete clusterrolebinding kubernetes-dashboard --ignore-not-found
+      kubectl delete namespace kubernetes-dashboard --ignore-not-found
+
+      # Create serviceaccount and clusterrolebinding
+      kubectl create serviceaccount kubernetes-dashboard -n kube-system --dry-run=client -o yaml | kubectl apply -f -
+      kubectl create clusterrolebinding kubernetes-dashboard \
+        --clusterrole=cluster-admin \
+        --serviceaccount=kube-system:kubernetes-dashboard \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+      # Install/upgrade Helm chart
+      helm upgrade --install {{ item }} ./{{ item }} --namespace kube-system --create-namespace
+    args:
+      chdir: "{{ playbook_dir }}/charts"
+    environment:
+      KUBECONFIG: "{{ local_kubeconfig }}"
+    loop:
+      - k8s-dashboard
+    when: "'uninstall' not in ansible_run_tags"
+    tags: charts
+    delegate_to: localhost
+
+  - name: Install common charts
+    shell: |
+      helm upgrade --install {{ item }} ./{{ item }} --create-namespace
+    args:
+      chdir: "{{ playbook_dir }}/charts"
+    environment:
+      KUBECONFIG: "{{ local_kubeconfig }}"
+    loop:
+      - traefik
+      - grafana
+      - prometheus
+      - kube-state-metrics
+      - vault
+      - portainer
+      - node-exporter
+    when: "'uninstall' not in ansible_run_tags"
+    tags: charts
+    delegate_to: localhost
+
+  # --------------------------------------------------------------------
+  # FINAL INFO
+  # --------------------------------------------------------------------
+  - debug:
+      msg:
+        - "✅ K3s ready on {{ inventory_hostname }}"
+        - "📦 Registry: {{ registry_host }}"
+        - "📄 KUBECONFIG={{ local_kubeconfig }}"
+    when: "'uninstall' not in ansible_run_tags"

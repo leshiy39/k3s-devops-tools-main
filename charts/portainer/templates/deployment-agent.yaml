@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portainer-agent
+  namespace: {{ .Values.nameSpace }}
+  labels:
+    app: portainer-agent
+spec:
+  replicas: {{ .Values.replicaCountAgent }}
+  selector:
+    matchLabels:
+      app: portainer-agent
+  template:
+    metadata:
+      labels:
+        app: portainer-agent
+    spec:
+      serviceAccountName: portainer-sa
+      containers:
+        - name: portainer-agent
+          image: "{{ .Values.image.agent.repository }}:{{ .Values.image.agent.tag }}"
+          imagePullPolicy: {{ .Values.image.agent.pullPolicy }}
+          args:
+            - -H
+            - "tcp://:9001"
+          ports:
+            - containerPort: 9001
