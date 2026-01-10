@@ -318,6 +318,7 @@
       - traefik
       - grafana
       - kube-state-metrics
+      - influxdb
     when: "'uninstall' not in ansible_run_tags"
     tags: charts
     delegate_to: localhost

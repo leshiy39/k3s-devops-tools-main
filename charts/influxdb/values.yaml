@@ -1,0 +1,27 @@
+influxdb:
+  image: influxdb:2.8.0
+  service:
+    type: NodePort
+    port: 8086
+    nodePort: 30886
+  # Инициализация InfluxDB 2.x
+  init:
+    mode: setup
+    username: devops
+    password: Pusts0987
+    org: stc-pusts
+    bucket: office
+    retention: 1w
+    adminToken: cVla67HbaBjtgbaopDYy
+  scrapeInterval: 15s
+  evaluationInterval: 15s
+
+ingress:
+  enabled: true
+  className: "traefik"
+  hosts:
+    - host: influx.devops-tools-dev.speechpro.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
