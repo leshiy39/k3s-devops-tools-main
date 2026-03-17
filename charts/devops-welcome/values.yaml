@@ -11,5 +11,5 @@ service:
 
 traefik:
   enabled: true
-  host: devops-tools-dev.speechpro.com
+  host: devops-tools-dev.ps.ad.speechpro.com
   path: /

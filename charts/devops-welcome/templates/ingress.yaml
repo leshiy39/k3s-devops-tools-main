@@ -7,7 +7,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   rules:
-    - host: devops-tools-dev.speechpro.com
+    - host: devops-tools-dev.ps.ad.speechpro.com
       http:
         paths:
           - path: /

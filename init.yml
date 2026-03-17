@@ -125,25 +125,25 @@
   - name: Stage k3s install script (online → offline fallback)
     block:
 
-      - name: Download official k3s install script (online)
-        delegate_to: localhost
-        become: false
-        ansible.builtin.get_url:
-          url: https://get.k3s.io
-          dest: "{{ k3s_online_script_local }}"
-          mode: "0755"
+    #   - name: Download official k3s install script (online)
+    #     delegate_to: localhost
+    #     become: false
+    #     ansible.builtin.get_url:
+    #       url: https://get.k3s.io
+    #       dest: "{{ k3s_online_script_local }}"
+    #       mode: "0755"
 
-      - name: Copy online install script to target host
-        ansible.builtin.copy:
-          src: "{{ k3s_online_script_local }}"
-          dest: "{{ k3s_script_remote }}"
-          mode: "0755"
+    #   - name: Copy online install script to target host
+    #     ansible.builtin.copy:
+    #       src: "{{ k3s_online_script_local }}"
+    #       dest: "{{ k3s_script_remote }}"
+    #       mode: "0755"
 
-      - name: Set active k3s script path
-        ansible.builtin.set_fact:
-          k3s_script_path: "{{ k3s_script_remote }}"
+    #   - name: Set active k3s script path
+    #     ansible.builtin.set_fact:
+    #       k3s_script_path: "{{ k3s_script_remote }}"
 
-    rescue:
+    # rescue:
 
       - name: Check offline install script exists
         delegate_to: localhost

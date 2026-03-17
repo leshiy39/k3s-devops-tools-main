@@ -22,7 +22,7 @@ service:
 ingress:
   enabled: true
   className: traefik
-  host: portainer.devops-tools-dev.speechpro.com
+  host: portainer.devops-tools-dev.ps.ad.speechpro.com
   path: /
   pathType: Prefix
 

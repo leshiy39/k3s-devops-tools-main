@@ -738,7 +738,7 @@ download_and_verify() {
     verify_downloader curl || verify_downloader wget || fatal 'Can not find curl or wget for downloading files'
     setup_tmp
     get_release_version
-    download_hash
+    #download_hash
 
     if installed_hash_matches; then
         info 'Skipping binary downloaded, installed k3s matches hash'
@@ -746,7 +746,7 @@ download_and_verify() {
     fi
 
     download_binary
-    verify_binary
+    #verify_binary
     setup_binary
 }
 

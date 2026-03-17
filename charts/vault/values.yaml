@@ -14,7 +14,7 @@ ingress:
   enabled: true
   className: "traefik"
   hosts:
-    - host: vault.devops-tools-dev.speechpro.com
+    - host: vault.devops-tools-dev.ps.ad.speechpro.com
       paths:
         - path: /
           pathType: Prefix
